@@ -1,0 +1,40 @@
+{
+  "name": "collaborative-planner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.14 <23"
+  },
+  "scripts": {
+    "dev": "node --dns-result-order=ipv4first node_modules/netlify-cli/bin/run.js dev",
+    "dev:frontend": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "start:docker": "tsx server/local.ts",
+    "db:migrate:local": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "test": "tsx --test --test-concurrency=1 tests/integration.test.ts",
+    "test:browser": "playwright test",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@netlify/database": "latest",
+    "@netlify/functions": "latest",
+    "pg": "^8.16.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^22.18.0",
+    "@types/pg": "^8.15.5",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "netlify-cli": "latest",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.10"
+  }
+}
