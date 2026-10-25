@@ -8,7 +8,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (/violates.*Content Security Policy|Refused to.*Content Security Policy/i.test(message.text())) errors.push(message.text()); });
   await page.goto(origin); await page.locator('.day-pages').waitFor();
-  await page.getByRole('button', { name: '＋ Add activity', exact: true }).first().click();
+  await page.getByRole('button', { name: '+ Add activity', exact: true }).first().click();
   await page.getByLabel('Activity title').fill('Netlify browser verification (demonstration)');
   await page.getByLabel('I’ll take care of this', { exact: true }).check(); await page.getByRole('button', { name: 'Save draft', exact: true }).click();
   await page.getByRole('article', { name: 'Netlify browser verification (demonstration)', exact: true }).waitFor();

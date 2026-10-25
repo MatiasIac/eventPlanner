@@ -16,7 +16,7 @@ export function cookie(token: string, clear = false): string {
 }
 export function originCheck(request: Request) {
   if (request.headers.get('origin') !== new URL(request.url).origin || request.headers.get('x-wedding-request') !== '1')
-    throw new ApiError(403, 'Open the wedding page and try again. The request origin could not be verified.');
+    throw new ApiError(403, 'Open the planner and try again. The request origin could not be verified.');
 }
 export function csrfCheck(request: Request) {
   const actual = request.headers.get('x-csrf-token') ?? '';

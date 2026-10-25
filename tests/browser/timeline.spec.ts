@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
 import { database } from '../../server/db';
-import sharp from 'sharp';
 if (process.env.APP_ENV !== 'test' || !new URL(process.env.LOCAL_DATABASE_URL!).pathname.endsWith('_test')) throw new Error('Browser checks require the isolated test database.');
 test.beforeAll(async () => {
   await database().query('TRUNCATE idempotency,rate_limits,sessions,assignments,jobs,activities,images,participants CASCADE');
@@ -16,16 +15,13 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page }) => { expect(browserErrors.get(page)).toEqual([]); });
 async function join(page: Page, name: string) {
   await page.goto('/'); await expect(page.locator('.day-pages')).toBeVisible();
-  await page.getByRole('button', { name: 'Add your name (optional)', exact: true }).click();
-  await page.getByLabel('Your name', { exact: true }).fill(name); await page.getByRole('button', { name: 'Save name', exact: true }).click();
+  await page.getByRole('button', { name: 'Your name', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Your name', exact: true }).fill(name); await page.getByRole('button', { name: 'Save name', exact: true }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
-  await page.getByLabel('More options', { exact: true }).click(); await page.getByRole('button', { name: 'Your name & contributions', exact: true }).click();
-  await page.getByRole('button', { name: 'Generate a new return code', exact: true }).click();
-  const code = await page.getByLabel('Save your personal return code somewhere private').inputValue();
-  await page.getByRole('button', { name: 'Done', exact: true }).click(); await page.getByLabel('More options', { exact: true }).click(); return code;
+
 }
 async function addActivity(page: Page, title: string, time = '14:00', takeCare = false) {
-  await page.getByRole('button', { name: '＋ Add activity', exact: true }).first().click();
+  await page.getByRole('button', { name: '+ Add activity', exact: true }).first().click();
   await page.getByLabel('Activity title').fill(title); await page.getByLabel('A few helpful details').fill('A few details so everyone knows what happens next.');
   await page.getByLabel('Place in the timeline').selectOption(time ? 'absolute' : 'untimed');
   if (time) { await page.getByLabel('Start time', { exact: true }).fill(time); await page.getByLabel('Scheduling', { exact: true }).selectOption('linked'); }
@@ -34,8 +30,8 @@ async function addActivity(page: Page, title: string, time = '14:00', takeCare =
   return page.getByRole('article', { name: title, exact: true });
 }
 
-test('two browsers share offers, jobs and nominations; recovery preserves ownership', async ({ page, browser }) => {
-  const returnCode = await join(page, 'First participant');
+test('two browsers share offers, jobs and nominations; reload preserves ownership', async ({ page, browser }) => {
+  await join(page, 'First participant');
   await expect(page.getByRole('button', { name: 'Add your first activity' })).toBeVisible();
   const activity = await addActivity(page, 'Our ceremony', '14:00', true);
   await expect(activity.getByText('First participant', { exact: false }).first()).toBeVisible();
@@ -47,10 +43,9 @@ test('two browsers share offers, jobs and nominations; recovery preserves owners
   await expect(second.getByRole('dialog')).not.toBeVisible(); await expect(secondActivity.getByText('Child nominee', { exact: true })).toBeVisible();
   await second.getByRole('button', { name: /My jobs/ }).click(); await expect(second.getByRole('dialog').getByText('Child nominee', { exact: true })).toBeVisible(); await second.getByRole('button', { name: 'Back to the timeline' }).click();
   await second.getByRole('button', { name: 'Withdraw Child nominee' }).click(); await expect(secondActivity.getByText('Child nominee', { exact: true })).not.toBeVisible();
-  const thirdContext = await browser.newContext(); const third = await thirdContext.newPage(); await third.goto('/'); await third.getByLabel('More options', { exact: true }).click(); await third.getByRole('button', { name: 'Organiser sign in', exact: true }).click(); await third.getByRole('button', { name: 'I have a personal return code' }).click();
-  await third.getByLabel('Personal return code', { exact: true }).fill(returnCode); await third.getByRole('button', { name: 'Restore my access' }).click();
-  await expect(third.getByRole('article', { name: 'Our ceremony' }).getByRole('button', { name: 'Edit activity', exact: true })).toBeVisible();
-  await context.close(); await thirdContext.close();
+  await page.reload();
+  await expect(page.getByRole('article', { name: 'Our ceremony' }).getByRole('button', { name: 'Edit activity', exact: true })).toBeVisible();
+  await context.close();
 });
 
 test('failed save keeps text and retry ID; background conflict is reviewed explicitly', async ({ page }) => {
@@ -72,14 +67,14 @@ test('failed save keeps text and retry ID; background conflict is reviewed expli
   await page.getByRole('button', { name: 'Save', exact: true }).click(); await expect(page.getByRole('dialog')).not.toBeVisible();
 });
 
-test('uploaded picture and responsive centred timeline at phone, tablet and desktop widths; printable roles', async ({ page }) => {
+test('bundled icons and responsive centred timeline at phone, tablet and desktop widths; printable roles', async ({ page }) => {
   await join(page, 'Layout participant'); const activity = await addActivity(page, 'Pictures and music', '17:00');
   await activity.getByRole('button', { name: 'Edit activity', exact: true }).click();
-  await page.getByText('Picture & alternative text', { exact: true }).click();
-  const image = await sharp({ create: { width: 600, height: 400, channels: 3, background: '#ccd5bd' } }).png().toBuffer();
-  await page.getByLabel('Or upload your own').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: image }); await page.getByLabel('Picture description', { exact: true }).fill('Soft green test picture');
+  await expect(page.locator('input[type=file]')).toHaveCount(0);
+  await expect(page.getByLabel('Picture description', { exact: true })).toHaveCount(0);
+  await page.getByLabel('Icon', { exact: true }).selectOption('music');
   await page.getByRole('button', { name: 'Save', exact: true }).click(); await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(activity.getByAltText('Soft green test picture')).toBeVisible();
+  await expect(activity.getByAltText('music icon')).toHaveAttribute('src', '/illustrations/music.svg');
   await addActivity(page, 'A plan for later', '');
   await expect(page.getByRole('heading', { name: 'Time to be confirmed', exact: true })).toBeVisible();
   for (const width of [390, 768, 1440]) {
@@ -94,22 +89,28 @@ test('uploaded picture and responsive centred timeline at phone, tablet and desk
   await page.pdf({ path: 'test-results/timeline-print.pdf', format: 'A4', printBackground: true });
 });
 
-test('organiser edits settings and others’ entries, restores archives, exports, and returns keyboard focus', async ({ page }) => {
+test('organiser edits settings and others’ entries, restores archives and returns keyboard focus', async ({ page }) => {
   await joinOrganiser(page);
-  await page.getByLabel('More options', { exact: true }).click(); await page.getByRole('button', { name: 'Wedding settings', exact: true }).click();
-  await page.getByLabel('Wedding date (optional)').fill('2027-01-15'); await page.getByLabel('Venue (optional)').fill('Test venue'); await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.locator('.wedding-details')).toContainText('15 January 2027');
+  await page.getByLabel('More options', { exact: true }).click(); await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByLabel('Timezone', { exact: true })).toHaveCount(0);
+  await page.getByLabel('Title', { exact: true }).fill('Community get-together');
+  await page.getByLabel('Date (optional)').fill('2027-01-15'); await page.getByLabel('Venue (optional)').fill('Test venue'); await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('.planner-details')).toContainText('15 January 2027');
+  await expect(page).toHaveTitle('Community get-together');
+  await expect(page.locator('h1')).toHaveText('Community get-together');
   const activity = page.getByRole('article', { name: 'Our ceremony', exact: true });
   await activity.getByRole('button', { name: 'Edit activity', exact: true }).click();
   await page.getByLabel('A few helpful details').fill('Organiser’s updated ceremony details'); await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(activity).toContainText('Organiser’s updated ceremony details');
   const edit = activity.getByRole('button', { name: 'Edit activity', exact: true }); await edit.focus(); await page.keyboard.press('Enter'); await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape'); await expect(edit).toBeFocused();
-  await activity.getByRole('button', { name: 'Archive', exact: true }).click(); await expect(page.getByRole('dialog')).toContainText('Affected helpers: First participant');
+  await activity.getByRole('button', { name: 'Archive activity', exact: true }).click(); await expect(page.getByRole('dialog')).toContainText('Affected helpers: First participant');
   await page.getByRole('button', { name: 'Save', exact: true }).click(); await expect(activity).not.toBeVisible();
   await page.getByRole('button', { name: 'Archived entries', exact: true }).click(); await page.getByRole('button', { name: 'Restore', exact: true }).click(); await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(activity).toBeVisible();
-  const downloadPromise = page.waitForEvent('download'); await page.getByRole('link', { name: 'Export schedule (JSON)' }).click(); const download = await downloadPromise; expect(download.suggestedFilename()).toBe('wedding-timeline.json');
+  await expect(page.getByRole('link', { name: 'Export schedule (JSON)' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Participant access|My access|return code/i })).toHaveCount(0);
+  await expect(page.getByText(/All times in|Last updated|A day, together|Our wedding day/)).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 800 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
@@ -127,16 +128,16 @@ test('polling pauses while idle, offline or hidden and resumes on interaction', 
   await expect.poll(() => requests).toBeGreaterThan(hiddenCount);
   await page.evaluate(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, value: false }); window.dispatchEvent(new Event('offline')); });
   await page.waitForTimeout(100); const offlineCount = requests; await page.clock.fastForward(61000); expect(requests).toBe(offlineCount);
-  await expect(page.getByText('Offline · showing last saved timeline', { exact: false })).toBeVisible();
+  await expect(page.getByText('Offline - showing the saved timeline', { exact: false })).toBeVisible();
 });
 
 async function joinOrganiser(page: Page) {
   await page.goto('/'); await expect(page.locator('.day-pages')).toBeVisible();
   await page.getByLabel('More options', { exact: true }).click(); await page.getByRole('button', { name: 'Organiser sign in', exact: true }).click();
   await page.getByLabel('Your display name').fill('Timeline manager');
-  await page.getByLabel('Organiser credential', { exact: true }).fill(process.env.ORGANISER_CREDENTIAL!);
+  await page.getByLabel('Organiser code', { exact: true }).fill(process.env.ORGANISER_CREDENTIAL!);
   await page.getByRole('button', { name: 'Sign in as organiser', exact: true }).click();
-  await page.getByRole('button', { name: 'Done', exact: true }).click(); await page.getByLabel('More options', { exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible(); await page.getByLabel('More options', { exact: true }).click();
 }
 
 test('contextual duration preview stays beside a scrollable timeline; drafts are shared and only organisers approve and drag', async ({ page, browser }) => {
@@ -145,6 +146,8 @@ test('contextual duration preview stays beside a scrollable timeline; drafts are
   const first = await addActivity(page, 'First moment', '14:00');
   const second = await addActivity(page, 'Second moment', '14:30');
   await addActivity(page, 'Last moment', '15:00');
+  await expect(page.getByRole('button', { name: /^Add activity before/ })).toHaveCount(1);
+  await expect(first.locator('.activity-card').getByRole('button', { name: /^Add activity before/ })).toHaveCount(0);
   await first.getByRole('button', { name: 'Add activity after First moment', exact: true }).click();
   const panel = page.getByRole('dialog');
   await expect(panel).toHaveAttribute('aria-modal', 'false');
@@ -174,7 +177,7 @@ test('contextual duration preview stays beside a scrollable timeline; drafts are
   await expect(panel).not.toBeVisible();
   const welcome = page.getByRole('article', { name: 'Family welcome', exact: true });
   await expect(welcome.locator('.activity-status')).toContainText('Draft');
-  await expect(page.locator('.drag-handle')).toHaveCount(0);
+  await expect(page.locator('.activity-card[draggable=true]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Confirm activity', exact: true })).toHaveCount(0);
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); const manager = await context.newPage();
   await joinOrganiser(manager);
@@ -185,19 +188,21 @@ test('contextual duration preview stays beside a scrollable timeline; drafts are
   await expect(manager.getByRole('article', { name: 'Second moment', exact: true }).locator('.time-badge')).toContainText('2:40 pm');
   const last = manager.getByRole('article', { name: 'Last moment', exact: true });
   const firstId = await manager.getByRole('article', { name: 'First moment', exact: true }).getAttribute('data-activity-id');
-  const handle = last.getByRole('button', { name: 'Drag Last moment to reorder', exact: true });
-  await handle.hover(); const source = await handle.boundingBox();
-  await manager.mouse.down(); await manager.mouse.move(source!.x + 15, source!.y + 10, { steps: 5 });
+  const card = last.locator('.activity-card');
+  await card.hover({ position: { x: 10, y: 10 } }); const source = await card.boundingBox();
+  await manager.mouse.down(); await manager.mouse.move(source!.x + 30, source!.y + 30, { steps: 5 });
   const destination = manager.locator(`[data-drop-target="before:${firstId}"]`);
   await expect(destination).toHaveClass(/ready/);
   await destination.scrollIntoViewIfNeeded(); const target = await destination.boundingBox();
   await manager.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2, { steps: 10 });
   await manager.mouse.move(target!.x + target!.width / 2 + 2, target!.y + target!.height / 2);
+  await expect(destination).toHaveClass(/active/);
+  await manager.screenshot({ path: 'test-results/card-drag-desktop.png', fullPage: false });
   await manager.mouse.up();
   await expect(manager.locator('.timeline-entry').first()).toHaveAttribute('aria-label', 'Last moment');
   await expect(manager.locator('.timeline-entry').first().locator('.time-badge')).toContainText('2:00 pm');
   await expect(managedWelcome.locator('.activity-status')).toHaveText('Confirmed');
-  await last.getByRole('button', { name: 'Move down', exact: true }).focus(); await manager.keyboard.press('Enter');
+  await card.focus(); await manager.keyboard.press('Space'); await manager.keyboard.press('ArrowDown'); await manager.keyboard.press('Enter');
   await expect(manager.locator('.timeline-entry').first()).toHaveAttribute('aria-label', 'First moment');
   await context.close();
 });
@@ -212,7 +217,8 @@ test('a changed running order preserves unsaved additions and requires reviewing
   await page.getByLabel('Activity title').fill('Keep my new idea');
   await page.getByLabel('A few helpful details').fill('Do not lose these details');
   const context = await browser.newContext(); const manager = await context.newPage(); await joinOrganiser(manager);
-  await manager.getByRole('article', { name: 'Last moment', exact: true }).getByRole('button', { name: 'Move up', exact: true }).click();
+  await manager.getByRole('article', { name: 'Last moment', exact: true }).locator('.activity-card').focus();
+  await manager.keyboard.press('Space'); await manager.keyboard.press('ArrowUp'); await manager.keyboard.press('Enter');
   await expect(manager.locator('.timeline-entry').first()).toHaveAttribute('aria-label', 'Last moment');
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page.getByText('The running order has changed.', { exact: true })).toBeVisible();
@@ -235,7 +241,7 @@ test('guests open directly, cards are compact, and organisers can change the sta
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByLabel('Wedding access code')).toHaveCount(0);
   await expect(page.getByText('Demonstration timeline', { exact:true })).toHaveCount(0);
-  await expect(page.locator('.wedding-start')).toContainText('2:00 pm');
+  await expect(page.locator('.planner-start')).toContainText('2:00 pm');
   await expect(page.getByRole('button',{name:'Change start time'})).toHaveCount(0);
   await joinOrganiser(page);
   const first=await addActivity(page,'Opening ceremony','14:00',true);
@@ -251,7 +257,7 @@ test('guests open directly, cards are compact, and organisers can change the sta
   await expect(job).toContainText('0/1 helper');
   expect((await job.boundingBox())!.height).toBeLessThan(110);
   await page.getByRole('button',{name:'Change start time',exact:true}).click();
-  await page.getByLabel('Wedding start time',{exact:true}).fill('15:00');
+  await page.getByLabel('Start time',{exact:true}).fill('15:00');
   await expect(page.getByRole('dialog').locator('.timing-preview')).toContainText('2 linked activities will move');
   await page.getByRole('button',{name:'Save',exact:true}).click(); await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(first.locator('.time-badge')).toContainText('3:00 pm');
@@ -274,7 +280,7 @@ test('Before and After pages hold tasks several days away, with independent star
   await database().query("UPDATE wedding SET date='2027-01-15',start_time='14:00'");
   await joinOrganiser(page);
   await page.getByRole('link',{name:'Before',exact:true}).click();
-  await page.getByRole('button',{name:'＋ Add activity',exact:true}).click();
+  await page.getByRole('button',{name:'+ Add activity',exact:true}).click();
   await page.getByLabel('Activity title').fill('Pick up tables');
   await page.getByLabel('Days before',{exact:true}).fill('3');
   await page.getByLabel('Start time',{exact:true}).fill('10:30');
@@ -283,7 +289,7 @@ test('Before and After pages hold tasks several days away, with independent star
   await expect(page.locator('.planning-day-heading')).toContainText('3 days before');
   await expect(page.locator('.planning-day-heading')).toContainText('12 Jan');
   await page.getByRole('link',{name:'After',exact:true}).click();
-  await page.getByRole('button',{name:'＋ Add activity',exact:true}).click();
+  await page.getByRole('button',{name:'+ Add activity',exact:true}).click();
   await page.getByLabel('Activity title').fill('Return tables'); await page.getByLabel('Days after',{exact:true}).fill('5');
   await page.getByLabel('Start time',{exact:true}).fill('11:00'); await page.getByRole('button',{name:'30 min',exact:true}).click();
   await page.getByRole('button',{name:'Save draft',exact:true}).click(); await expect(page.getByRole('dialog')).not.toBeVisible();
@@ -296,12 +302,43 @@ test('Before and After pages hold tasks several days away, with independent star
   await page.getByRole('button',{name:'Save',exact:true}).click(); await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(returned.locator('.time-badge')).toContainText('12:15 pm'); await expect(returned.locator('.entry-kicker')).toContainText('60 MIN');
   await page.screenshot({path:'test-results/after-page-desktop.png',fullPage:true});
-  await page.getByRole('link',{name:'Wedding day',exact:true}).click(); await expect(page.getByRole('article')).toHaveCount(0);
+  await page.getByRole('link',{name:'Main day',exact:true}).click(); await expect(page.getByRole('article')).toHaveCount(0);
   await page.getByRole('button',{name:'Add your first activity',exact:true}).click();
   await expect(page.getByLabel('Start time',{exact:true})).toHaveValue('14:00'); await page.getByRole('button',{name:'Cancel',exact:true}).click();
   const context=await browser.newContext({viewport:{width:390,height:844}}); const guest=await context.newPage(); await guest.goto('/#before');
   await expect(guest.getByRole('article',{name:'Pick up tables',exact:true})).toBeVisible();
   await expect(guest.getByRole('dialog')).toHaveCount(0); expect(await guest.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await guest.screenshot({path:'test-results/before-page-phone.png',fullPage:true});
+  await context.close();
+});
+
+test('whole cards reorder by touch; cancelled drags preserve order and icons stay usable', async ({ browser }) => {
+  await database().query('TRUNCATE activities CASCADE');
+  const context = await browser.newContext({ hasTouch: true, viewport: { width: 390, height: 1100 } });
+  const page = await context.newPage(); await joinOrganiser(page);
+  const first = await addActivity(page, 'Touch first', '14:00');
+  const last = await addActivity(page, 'Touch last', '14:30');
+  await expect(page.getByRole('button', { name: /^Move( up| down)?$/ })).toHaveCount(0);
+  const edit = first.getByRole('button', { name: 'Edit activity', exact: true });
+  expect(await edit.textContent()).toBe(''); await expect(edit.locator('svg')).toBeVisible();
+  await edit.tap(); await expect(page.getByLabel('Activity title')).toHaveValue('Touch first');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).tap();
+  await first.locator('.activity-card').focus(); await page.keyboard.press('Space'); await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.drop-zone.active')).toHaveCount(1);
+  await page.keyboard.press('Escape'); await expect(page.locator('.drop-zone.active')).toHaveCount(0);
+  await expect(page.locator('.timeline-entry').first()).toHaveAttribute('aria-label', 'Touch first');
+  await page.evaluate(() => window.scrollTo(0, 200));
+  const source = (await last.locator('.activity-card').boundingBox())!;
+  const destination = (await first.locator('.activity-card').boundingBox())!;
+  const cdp = await context.newCDPSession(page);
+  const start = { x: source.x + 15, y: source.y + 15 };
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] });
+  await expect(last).toHaveClass(/dragging/);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: destination.x + 15, y: destination.y + 20 }] });
+  await expect(page.locator('.drop-zone.active')).toContainText('Drop here before Touch first');
+  await page.screenshot({ path: 'test-results/card-drag-touch.png' });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect(page.locator('.timeline-entry').first()).toHaveAttribute('aria-label', 'Touch last');
+  await expect(last.locator('.time-badge')).toContainText('2:00 pm');
   await context.close();
 });

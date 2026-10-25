@@ -1,13 +1,11 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import sharp from 'sharp';
 import { handle } from '../server/api';
 import { database } from '../server/db';
-import { mediaNamespace, readMedia } from '../server/media';
 import { sortActivities, activityTime, type Activity } from '../shared/model';
 
-type Guest = { id: string; cookie: string; csrf: string; returnCode: string };
+type Guest = { id: string; cookie: string; csrf: string };
 let alice: Guest, bob: Guest, admin: Guest;
 if (process.env.APP_ENV !== 'test' || !new URL(process.env.LOCAL_DATABASE_URL!).pathname.endsWith('_test')) throw new Error('Integration tests require an isolated _test database.');
 async function request(path: string, method = 'GET', body?: unknown, guest?: Guest, key = randomUUID(), extra: Record<string, string> = {}) {
@@ -18,10 +16,9 @@ async function request(path: string, method = 'GET', body?: unknown, guest?: Gue
 async function join(name: string, organiser = false): Promise<Guest> {
   const r = organiser ? await request('/session/join', 'POST', { display_name: name, code: process.env.ORGANISER_CREDENTIAL, organiser }) : await request('/session/guest', 'POST', {});
   assert.equal(r.status, 200, JSON.stringify(r.data));
-  const guest = { id: r.data.participant.id, csrf: r.data.csrf, returnCode: r.data.return_code, cookie: r.headers.get('set-cookie')!.split(';')[0] };
+  const guest = { id: r.data.participant.id, csrf: r.data.csrf, cookie: r.headers.get('set-cookie')!.split(';')[0] };
   if (!organiser) {
     assert.equal((await request('/session/name','POST',{display_name:name},guest)).status,200);
-    guest.returnCode=(await request('/session/return-code','POST',{},guest)).data.return_code;
   }
   return guest;
 }
@@ -41,9 +38,9 @@ after(async () => { await database().end(); });
 test('private API, session hashes, separate organiser credential and same-origin CSRF', async () => {
   assert.equal((await request('/timeline')).status, 401);
   const bad = await request('/session/join', 'POST', { display_name: 'Wrong', code: 'not-the-code', role: 'organiser' }); assert.equal(bad.status, 403);
-  assert.equal((await request('/session/join', 'POST', { display_name: 'Wrong', code: process.env.WEDDING_ACCESS_CODE, organiser: true })).status, 401);
+  assert.equal((await request('/session/join', 'POST', { display_name: 'Wrong', code: 'invalid-organiser-code', organiser: true })).status, 401);
   const stored = (await database().query('SELECT token_hash,return_hash FROM sessions JOIN participants ON participants.id=sessions.participant_id WHERE participants.id=$1', [alice.id])).rows[0];
-  assert.match(stored.token_hash, /^[a-f0-9]{64}$/); assert.notEqual(stored.return_hash, alice.returnCode);
+  assert.match(stored.token_hash, /^[a-f0-9]{64}$/); assert.equal(stored.return_hash, null);
   assert.equal((await request('/activities', 'POST', { title: 'Forged' }, alice, randomUUID(), { Origin: 'https://attacker.invalid' })).status, 403);
   assert.equal((await request('/activities', 'POST', { title: 'Forged' }, alice, randomUUID(), { 'X-CSRF-Token': 'wrong' })).status, 403);
   const timeline = await request('/timeline', 'GET', undefined, alice);
@@ -112,7 +109,7 @@ test('direct API permissions use stable identities, including identical display 
   assert.equal((await request(`/assignments/${n.data.id}/withdraw`, 'POST', { revision: 1 }, admin)).status, 200);
   assert.equal((await request('/settings', 'PUT', {}, bob)).status, 403);
   assert.equal((await request('/archive', 'GET', undefined, bob)).status, 403);
-  assert.equal((await request('/export', 'GET', undefined, bob)).status, 403);
+  assert.equal((await request('/export', 'GET', undefined, bob)).status, 404);
 });
 
 test('stale revisions conflict while unrelated edits succeed; capacities cannot shrink below assignments', async () => {
@@ -166,44 +163,16 @@ test('local times include next day and explicit ends; wedding settings preserve 
   assert.equal((await database().query('SELECT start_time FROM activities WHERE id=$1', [b.id])).rows[0].start_time, previous);
 });
 
-test('personal recovery restores identity; rotation and revocation invalidate secrets', async () => {
-  const guest = await join('Recovery fixture'); const a = await activity(guest);
-  const recovered = await request('/session/recover', 'POST', { code: guest.returnCode }); assert.equal(recovered.data.participant.id, guest.id);
-  const otherBrowser = { ...guest, cookie: recovered.headers.get('set-cookie')!.split(';')[0], csrf: recovered.data.csrf };
-  assert.equal((await request(`/activities/${a.id}`, 'PUT', { ...a, placement: { mode: 'keep' }, title: 'Recovered edit' }, otherBrowser)).status, 200);
-  const rotated = await request('/session/return-code', 'POST', {}, guest); assert.equal(rotated.status, 200);
-  assert.equal((await request('/session/recover', 'POST', { code: guest.returnCode })).status, 401);
-  assert.equal((await request('/session/recover', 'POST', { code: rotated.data.return_code })).status, 200);
-  assert.equal((await request(`/participants/${guest.id}/revoke`, 'POST', {}, admin)).status, 200);
-  assert.equal((await request('/timeline', 'GET', undefined, guest)).status, 401);
-  assert.equal((await request('/timeline', 'GET', undefined, otherBrowser)).status, 401);
-  assert.equal((await request('/session/recover', 'POST', { code: rotated.data.return_code })).status, 401);
-  assert.equal((await database().query('SELECT 1 FROM activities WHERE id=$1', [a.id])).rowCount, 1);
-});
-
-test('validates, optimises and privately serves uploaded images; export excludes credentials', async () => {
-  const input = await sharp({ create: { width: 640, height: 480, channels: 3, background: '#888866' } }).png().toBuffer();
-  const upload = async (buffer: Buffer, type: string, who = alice) => handle(new Request('http://wedding.test/api/images', { method: 'POST', headers: { Origin: 'http://wedding.test', 'X-Wedding-Request': '1', 'X-CSRF-Token': who.csrf, Cookie: who.cookie, 'Content-Type': type, 'Idempotency-Key': randomUUID(), 'X-Image-Alt': 'A%20test%20picture' }, body: new Uint8Array(buffer) }), 'images');
-  assert.equal((await upload(input, 'image/jpeg')).status, 400); assert.equal((await upload(Buffer.from('<svg/>'), 'image/png')).status, 400);
-  assert.equal((await upload(Buffer.alloc(2097153), 'image/png')).status, 413);
-  const result = await upload(input, 'image/png'); assert.equal(result.status, 200); const image = await result.json();
-  assert.equal((await handle(new Request(`http://wedding.test/api/images/${image.id}`))).status, 401);
-  const served = await handle(new Request(`http://wedding.test/api/images/${image.id}`, { headers: { Cookie: bob.cookie } })); assert.equal(served.status, 200);
-  assert.equal(served.headers.get('content-type'), 'image/webp'); const metadata = await sharp(Buffer.from(await served.arrayBuffer())).metadata(); assert.equal(metadata.width, 384); assert.equal(metadata.height, 288);
-  const a = await activity(alice, { image_id: image.id, image_alt: 'A test picture' });
-  const exported = await request('/export', 'GET', undefined, admin); assert.equal(exported.status, 200); assert.equal(exported.data.schema_version, 1);
-  assert.equal(exported.data.activities.find((x: any) => x.id === a.id).image_id, image.id);
-  for (const secret of ['token_hash', 'return_hash', alice.returnCode, process.env.WEDDING_ACCESS_CODE!]) assert(!JSON.stringify(exported.data).includes(secret));
-});
-
-test('hosted preview media namespaces never access production uploads', async () => {
-  const previous = { NETLIFY: process.env.NETLIFY, CONTEXT: process.env.CONTEXT, DEPLOY_ID: process.env.DEPLOY_ID };
-  try {
-    process.env.NETLIFY = 'true'; process.env.CONTEXT = 'production'; assert.equal(mediaNamespace(), 'wedding-production');
-    process.env.CONTEXT = 'deploy-preview'; process.env.DEPLOY_ID = 'preview-test'; assert.equal(mediaNamespace(), 'wedding-preview-preview-test');
-    await assert.rejects(readMedia('anything.webp', 'wedding-production'), /not available in this preview/);
-    delete process.env.DEPLOY_ID; assert.throws(mediaNamespace, /isolated image store/);
-  } finally { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
+test('removed access, export and upload routes are unavailable; only bundled icons are exposed', async () => {
+  for (const [path, method] of [['/export','GET'], ['/images','POST'], ['/images/'+randomUUID(),'GET'], ['/session/return-code','POST'], ['/session/recover','POST'], ['/participants/'+alice.id+'/revoke','POST']]) {
+    assert.equal((await request(path, method, {}, admin)).status, 404, path);
+  }
+  const a = await activity(alice, { illustration: 'music' });
+  const state = (await request('/timeline', 'GET', undefined, alice)).data;
+  assert.equal(state.wedding.timezone, undefined);
+  const row = state.activities.find((x: Activity) => x.id === a.id);
+  assert.equal(row.illustration, 'music'); assert.equal(row.image_id, undefined); assert.equal(row.image_alt, undefined);
+  assert.equal((await request('/session/guest','POST',{},alice)).data.return_code, undefined);
 });
 
 async function schedule() { return (await request('/timeline', 'GET', undefined, admin)).data; }
@@ -259,7 +228,7 @@ test('before insertion and own draft duration changes are shared; concurrent sch
   assert.deepEqual(starts(await schedule()), starts(next));
 });
 
-test('only organisers can shuffle activities using move buttons, relative placement or absolute clock edits', async () => {
+test('only organisers can shuffle activities using relative placement or absolute clock edits', async () => {
   await resetSchedule();
   const a = await activity(alice, { title: 'A', start_time: '14:00', duration_minutes: 30 });
   const b = await activity(alice, { title: 'B', start_time: '14:30', duration_minutes: 15 });
@@ -311,12 +280,12 @@ test('guests need no credentials, keep ownership across reloads and cannot gain 
   const joined = await request('/session/guest', 'POST', { organiser: true, role: 'organiser' });
   assert.equal(joined.status, 200); assert.equal(joined.data.participant.role, 'participant');
   assert.equal(joined.data.return_code, undefined);
-  const guest = { id: joined.data.participant.id, csrf: joined.data.csrf, cookie: joined.headers.get('set-cookie')!.split(';')[0], returnCode: '' };
+  const guest = { id: joined.data.participant.id, csrf: joined.data.csrf, cookie: joined.headers.get('set-cookie')!.split(';')[0] };
   const repeat = await request('/session/guest', 'POST', {}, guest);
   assert.equal(repeat.data.participant.id, guest.id);
   assert.equal((await request('/timeline','GET',undefined,guest)).status,200);
   assert.equal((await request('/settings','PUT',{},guest)).status,403);
-  assert.equal((await request('/export','GET',undefined,guest)).status,403);
+  assert.equal((await request('/export','GET',undefined,guest)).status,404);
   const name = await request('/session/name','POST',{ display_name:'Table helper', role:'organiser' },guest);
   assert.equal(name.data.participant.display_name,'Table helper'); assert.equal(name.data.participant.role,'participant');
   const a = await activity(guest, { title:'An anonymous contribution' });
@@ -364,7 +333,7 @@ test('fixed appointments preserve gaps, linked insertions stop at anchors, and m
 });
 
 test('access attempt throttling is persisted across requests', async () => {
-  const make = () => handle(new Request('http://wedding.test/api/session/recover', { method: 'POST', headers: { Origin: 'http://wedding.test', 'X-Wedding-Request': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ code: 'invalid' }) }), 'rate-test');
+  const make = () => handle(new Request('http://wedding.test/api/session/join', { method: 'POST', headers: { Origin: 'http://wedding.test', 'X-Wedding-Request': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ display_name: 'Test', code: 'invalid', organiser: true }) }), 'rate-test');
   for (let i = 0; i < 30; i++) assert.equal((await make()).status, 401);
   assert.equal((await make()).status, 429);
 });

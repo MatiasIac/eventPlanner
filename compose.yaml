@@ -45,7 +45,6 @@ services:
     environment:
       APP_ENV: test
       LOCAL_DATABASE_URL: postgres://wedding:test-only@test-db:5432/wedding_test
-      WEDDING_ACCESS_CODE: test-wedding-code-only
       ORGANISER_CREDENTIAL: test-organiser-secret-only
     depends_on: { test-db: { condition: service_healthy } }
     volumes: ["./test-results:/app/test-results"]

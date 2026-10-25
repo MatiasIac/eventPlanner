@@ -22,4 +22,4 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache' }); res.end(bytes);
   } catch { res.writeHead(500); res.end('The local application could not serve this request.'); }
 });
-server.listen(8888, '0.0.0.0', () => console.log('Wedding timeline running at http://localhost:8888'));
+server.listen(8888, '0.0.0.0', () => console.log('Planner running at http://localhost:8888'));

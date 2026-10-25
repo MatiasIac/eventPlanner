@@ -10,7 +10,7 @@ export function minutes(time: string, day = 0): number {
   return day * 1440 + Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
 }
 function clock(value: number) {
-  if (!Number.isInteger(value) || value < -365 * 1440 || value >= 366 * 1440) throw new Error('These changes go beyond 365 days before or after the wedding. Choose another day or a shorter duration.');
+  if (!Number.isInteger(value) || value < -365 * 1440 || value >= 366 * 1440) throw new Error('These changes go beyond 365 days before or after the main day. Choose another day or a shorter duration.');
   const day = Math.floor(value / 1440), local = value - day * 1440;
   return { time: `${String(Math.floor(local / 60)).padStart(2, '0')}:${String(local % 60).padStart(2, '0')}`, day };
 }

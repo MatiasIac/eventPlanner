@@ -1,73 +1,65 @@
-# Implementation and verification
+﻿# Implementation and verification
 
-Implemented from `requirements.md` on 25 October 2026. The application is prepared for Netlify and running locally in Docker. Nothing has been published and no external account or plan has been changed.
+Updated 25 October 2026 against requirements version 1.3. The application runs locally in Docker at http://localhost:8888. No remote site, repository, account or billing plan has been changed.
 
 ## Delivered
 
-- A centred, normally scrolling timeline with consistent small illustrations, local wedding times, next-day entries, duration-based running order and a separate unconfirmed-time section. Date and venue start unset.
-- Shared PostgreSQL persistence for activities, jobs, assignments, identities and sessions; shared draft activities with organiser confirmation; non-modal side-panel editing and live timing previews; organiser-only drag-and-drop and keyboard reordering; atomic activity/job offers; self-volunteering and managed nominations; My jobs.
-- Server-enforced ownership and organiser permissions, revision conflicts, retry protection, capacity locking, soft archive/restore, access revocation and private return-code recovery.
-- Validated and optimised private image uploads, Netlify Blobs integration, isolated preview stores, print/PDF layout and organiser JSON export.
-- Native SQL migrations, explicit demo seed, locked dependencies, Docker app/test environments, Netlify Function/routing configuration, example server environment, original SVG assets and operating documentation.
+The planner uses its configured title as both the main heading and browser title. The fixed slogan, event branding, demonstration card, freshness text, timezone display/control, access/recovery menus, participant administration and JSON export are removed.
 
-The local instance retains its existing activities. The demonstration banner was removed at the owner's request. Its access codes are in the ignored `.env`. Production migration/startup does not create that sample schedule. No actual date, venue, guest list or wedding sequence has been invented.
+Guests open the timeline directly. The optional person icon edits their display name; organiser sign-in asks for a display name and organiser code. Existing browser-session names and database identifiers are retained internally so the upgrade does not discard ownership or plans.
 
-## Checks actually run
+Activities use bundled icons. Upload/serving routes, image-processing code, direct Sharp/Blobs dependencies and the Docker media mount are removed. There is no Blob storage requirement. Existing legacy database columns and historical media files have not been deleted.
+
+Activity edit, archive and confirmation controls are icons with accessible names. Job editing, archiving, nomination management and withdrawal use icons at the top right of compact cards. Add before appears once, outside the first activity card; Add activity remains in the timeline between entries.
+
+Organisers drag whole cards using mouse or touch. The source fades and a line with a destination label marks the drop position. Touch uses a brief hold so ordinary swipes keep scrolling. Keyboard users pick up the focused card with Space, choose with arrows, drop with Enter or cancel with Escape. Separate movement buttons are gone. Backend organiser permissions and stale schedule checks still apply.
+
+Existing scheduling features remain: a scrollable timeline beside the editor, duration presets and unsaved previews, shared drafts and organiser confirmation, fixed starts and linked timing, adjustable main start, Before/Main day/After pages with exact offsets, overnight chains, volunteering/nominations, My jobs, and soft archive/restoration.
+
+## Checks run for this update
 
 | Check | Result |
 | --- | --- |
-| Docker build on Node 22.23.3, TypeScript check and Vite production build | Passed |
-| PostgreSQL 17 migrations, including repeat application | Passed; previously applied migrations skipped; earlier upgrade preserved 8 activities; the guest/day upgrade preserved all 9 currently saved activities with an identical start-time fingerprint |
-| Real PostgreSQL integration checks | **22 passed** |
-| Chromium end-to-end checks against the built app in Docker | **9 passed** |
-| Phone, tablet and desktop layout | Passed at 390, 768 and 1440 pixels; additional 320-pixel overflow check passed |
-| Keyboard side-panel opening, Escape and restored focus | Passed |
-| Print stylesheet and PDF generation | Passed; generated PDF under `test-results/` |
-| App-container rebuild/recreation with persistent database/media volumes | Passed: session, activity, job, assignment and identical uploaded image bytes retained; verification fixtures removed |
-| Actual Netlify Dev in Docker with native local database and Blobs emulators | Baseline verification before this scheduling update passed: migrations, Function routing, session, atomic offer, upload and authorised retrieval |
-| Chromium through the actual Netlify Dev proxy | Baseline verification before this scheduling update passed: rendered UI, sign-in and atomic offer, without script/CSP errors |
-| Netlify Function packaging (`netlify functions:build --src netlify/functions`) | Passed |
-| Production dependency audit (`npm audit --omit=dev`) | **0 vulnerabilities reported** |
+| Docker Node 22 build, TypeScript and Vite production build | Passed |
+| PostgreSQL integration tests | **20 passed** |
+| Chromium browser tests against the built application in Docker | **10 passed** |
+| Mouse, touch and keyboard reordering; cancellation and visible insertion feedback | Passed |
+| Guest entry, saved title, generic settings/menu, bundled icons and removed features | Passed |
+| Side-panel preview, background scrolling, preserved drafts and concurrent schedule review | Passed |
+| Responsive layout and overflow | Passed at 320, 390, 768 and 1440 pixels |
+| Printing and browser PDF generation | Passed |
+| Netlify Function packaging | Passed |
+| Production dependency audit | 0 vulnerabilities reported |
+| Migration and recreation of the running local app | Passed; app and database healthy |
+| Browser smoke check against the recreated app and saved local data | Passed; 6 active activities displayed |
 
-The database checks include final-place races, archive/capacity races, downstream rollback, concurrent identical retries, same-name identity separation, direct unauthorised API calls, stale edits, capacity reduction, draft confirmation, contextual before/after insertion, duration changes, organiser-only moves, stale structural changes, midnight cascades and atomic boundary rejection, retained archive descendants, recovery rotation/revocation, after-midnight ordering, upload spoofing/size limits, private exports, rate limits and preview media separation. Browser checks cover two-browser sharing and recovery, a visitor in another timezone, nominations/withdrawal/My jobs, failed saves and preserved drafts, background conflicts, pictures, organiser settings/archives/export, keyboard focus and visible/hidden/offline/idle polling. New browser checks exercise a non-modal desktop panel and collapsible phone panel, scrollable background, unsaved timing preview, shared draft approval, real mouse drag-and-drop, keyboard reordering and explicit review of a concurrent schedule change.
+The 20 integration checks cover ownership and organiser permissions, atomic offers and rollback, capacity races, claim/archive coordination, idempotent retries, revisions and conflicts, nomination withdrawal, retained archive descendants, fixed and linked timings, draft approval, multi-day independence, changed main start, midnight limits, removed API routes and request throttling.
 
-Visual artifacts are ignored local outputs: `test-results/timeline-390.png`, `timeline-768.png`, `timeline-1440.png`, `timeline-print.pdf`, `timeline-panel-desktop.png`, `timeline-panel-phone.png`, and `test-results/report/index.html`. Screenshots and PDF use test records, not the real wedding.
+The browser suite verifies separate identities and a visitor in a different timezone, shared activities/jobs/nominations, ownership after reload, failed-save retention, background conflicts, configured title, compact controls, settings/archive restoration, keyboard focus, active/idle/offline polling, side-panel layout, drag input methods, day pages, independent starts and durations.
 
-Final built frontend: approximately **275 KB JavaScript (85 KB gzip)** and **28 KB CSS (7 KB gzip)**, plus small bundled SVGs. No external font, tracking, stock-image or AI service is contacted by the application.
+Before and after the running-app upgrade, complete row fingerprints matched for all **9 activities, 17 jobs, 5 assignments and the settings record**. This includes archived activities. No existing title, time, description, job, assignment or setting was changed by the upgrade. The new migration supplies a generic title only for an empty installation still using the original default.
 
-## Scheduling update
+Visual artifacts are local and ignored by source control: `test-results/timeline-390.png`, `timeline-768.png`, `timeline-1440.png`, `timeline-print.pdf`, `timeline-panel-desktop.png`, `timeline-panel-phone.png`, `compact-help-phone.png`, `card-drag-desktop.png`, `card-drag-touch.png`, `before-page-phone.png`, `after-page-desktop.png`, `running-app-desktop.png`, and `report/index.html`.
 
-The owner's follow-ups supersede the original no-cascade/no-approval and mandatory guest-code defaults; requirements version 1.2 records the current behaviour. Drafts reserve time as soon as saved. Confirmation changes only their status. Inserts reserve their duration, duration edits shift by the difference, moves close the original slot and reserve the new one, and archive/restore removes/reinstates that duration. Specific clock starts now default to fixed appointments. Linked timing is an explicit alternative. Fixed starts stop cascades and preserve gaps; changes that overrun a fixed appointment fail atomically. Each planning day is independent.
+The built frontend is approximately 274 KB JavaScript (85 KB gzip) and 32 KB CSS (8 KB gzip), plus small SVGs. It requests no external font, image or tracking services.
 
-The migration preserves existing start times and treats pre-existing activities as confirmed. Missing durations become clearly labelled estimates, derived from an explicit end or the next later start, with a 15-minute fallback. All changed records and the shared schedule revision commit together. Existing text-only edits retain per-record conflict checks. Test data remains isolated from the local planning database.
+## Implementation notes
 
-## Guest access, planning days and compact cards
+PostgreSQL remains authoritative. Shared transactions coordinate schedule revisions, record changes, capacity checks and idempotent retries. Fixed appointments stop duration cascades; conflicting changes fail atomically. Confirmation changes status without shifting times again. Each planning day remains independent.
 
-Guests open the timeline directly without a name/code gate. A silent browser session preserves ownership; adding a name and generating a personal return code are optional. The sign-in endpoint is organiser-only. The unused shared guest credential was removed from runtime configuration. Existing guest/organiser sessions remain valid.
+The existing Compose project, database/table names and cookie identifiers remain internal compatibility details. They are not application branding. Earlier schema migrations are immutable; the additive generic-default migration preserves current records. Unused historical image/recovery/timezone columns are deliberately left in place without exposing those features.
 
-Before, Wedding day and After pages support exact offsets up to 365 days either side, plus calendar dates when the wedding date is set. Each activity retains its intended planning day across midnight. The configurable wedding start defaults to 2 PM; changing it moves the opening linked chain and preserves fixed appointments and other days. All activity editors retain start-time and duration controls, subject to the existing organiser-only relocation rule.
+Guest ownership is remembered by the browser cookie for 30 days. Clearing it or using another browser creates a separate identity; organisers can manage all contributions. There is no recovery-code workflow.
 
-Helping-hand summaries combine title, capacity and status. Helpers and controls remain visible in compact rows; the Manage menu now shares the title row. The demonstration banner is removed without deleting any saved activities.
+The first browser run exposed an ambiguous test selector after the name icon and input acquired the same accessible name. The selector now targets the textbox; the complete browser suite passed. Current production build and standalone Function packaging were tested in Docker. A browser smoke check used localhost within the app's Docker network namespace, matching the local secure-context behavior needed by browser cryptographic APIs.
 
-The final running app also passed a credential-free guest API check, returning the six active activities and the 14:00 wedding start (all nine records, including archives, were preserved).
+## Hosted release limits
 
-New Docker checks verify credential-free guests, stable browser ownership, forbidden organiser actions, fixed-time boundaries and rollback, changed wedding start, independent multi-day tasks, exact dates and page persistence, compact card height, and phone overflow. Visual checks include compact-help-phone.png, before-page-phone.png and after-page-desktop.png in test-results/.
+No linked Netlify account/site was supplied. Hosted Database availability, provisioning, branch isolation, secure cookies, and persistence through a hosted redeploy need verification in an authorised preview. README contains setup instructions. The local Docker adapter is intended for local/test use; hosted operation uses the Netlify Function over HTTPS.
 
-## Findings addressed during verification
+Earlier baseline Netlify Dev emulation was verified before this update. It was not repeated for this simplification. Standalone Function packaging and the current Docker backend/browser checks passed. An earlier account-free `netlify build --offline` could not provision its Database step; a full hosted build remains dependent on linking a site.
 
-- Upgraded Sharp to 0.35.5 after the initial dependency audit identified vulnerable native image libraries. Runtime dependency audit is now clean.
-- Added the IPv4-first flag to `npm run dev`: the current Netlify emulator could bind localhost on IPv6 while advertising an IPv4 database/proxy endpoint in this Docker environment. Native migrations/API/browser checks passed after that adjustment.
-- Generate the strict content-security policy in production HTML; omit it in Vite development so the refresh preamble and styles work. Production browser checks run with the policy enforced.
-- Kept React timeline entries stable during background refreshes, improved small-text contrast, and included expanded job instructions in printed output.
+Chromium desktop and emulated touch were tested. Real-device Safari/Firefox and a full assistive-technology audit were not run.
 
-## Remaining account-specific release checks
+The dependency install still reports two high-severity development-tool findings in the Netlify CLI toolchain, previously traced to its TOML parser. They are absent from the production dependency audit. No incompatible forced CLI downgrade was applied.
 
-No Netlify account/site was provided. The owner must verify Database plan eligibility and usage, provision/link the site's database, set separate production/preview server credentials, and authorise deployment. See the numbered deployment steps in `README.md`.
-
-An account-free `netlify build --offline` was attempted. Netlify CLI 27.14.2 / Build 37.6.1 fails in its database provisioning step (`createSiteDatabase` has no API client in offline mode). Frontend production build, standalone Function packaging, and native local emulation were verified separately. A full hosted build remains unverified until a site is linked; no credentials were requested and no provisioning was performed.
-
-Real hosted secure cookies, branch isolation, durable production Blobs and deployment rollback/redeploy behaviour still need an authorised preview/live check. Local database/media persistence and the application's preview namespace guard are tested; these do not establish the state of a particular Netlify account. Cross-engine Firefox/Safari and an assistive-technology audit were not run.
-
-The full dependency audit still reports **two high-severity development-tool findings**: `netlify-cli` and its transitive `toml` parser. They describe denial of service when parsing malicious TOML and are absent from the runtime audit. The locked current CLI has no compatible patched version offered by the audit; its suggested downgrade to CLI 5.3.1 would remove the required Database workflow and was not applied. Use trusted repository configuration and recheck when updating the CLI. See [the parser advisory](https://github.com/advisories/GHSA-9qmh-m7c6-f92p). This limitation is recorded rather than hidden by an audit exclusion.
-
-See `README.md` for backup/restore steps, billing/sleep settings, explicit application bounds, and the possibility of unattached images from cancelled or interrupted uploads.
