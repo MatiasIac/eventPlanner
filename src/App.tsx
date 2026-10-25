@@ -3,6 +3,7 @@ import type { Activity, Assignment, Job, Participant, Timeline, Wedding } from '
 import { activityTime, clockTime, dayLabel, dayDate } from '../shared/model';
 import { api, ApiFailure, setCsrf } from './api';
 import { Icon } from './Icons';
+import { RichDetails } from './RichDetails';
 import { useActivityDrag } from './useActivityDrag';
 import { ActivityPlanner, type TimelinePreview } from './ActivityPlanner';
 import type { Placement } from '../shared/schedule';
@@ -57,6 +58,7 @@ export function App() {
   const lastInteraction = useRef(Date.now());
   const me = session?.participant;
   const acceptSession = useCallback((result: Session) => { setCsrf(result.csrf); setSession(result); setData(null); setOverlay(null); setPreview(null); }, []);
+  useEffect(() => { document.documentElement.dataset.theme = data?.wedding.theme ?? 'beach'; }, [data?.wedding.theme]);
   useEffect(() => { document.title = data?.wedding.title || 'Collaborative planner'; }, [data?.wedding.title]);
   useEffect(() => {
     let cancelled = false;
@@ -116,12 +118,14 @@ export function App() {
       <div className="job-heading"><h4>{job.title}</h4><span className={`status ${full ? 'covered' : 'open'}`}>{assignments.length}/{job.capacity} {job.capacity === 1 ? 'helper' : 'helpers'} - {full ? 'Covered' : 'Open'}</span>
         <div className="job-controls">
           {canEdit(job.creator_id) && <><button className="action-icon" aria-label={`Edit job ${job.title}`} title="Edit job" onClick={() => setOverlay({ type: 'job', activityId: job.activity_id, job })}><Icon name="edit"/></button><button className="action-icon" aria-label={`Archive job ${job.title}`} title="Archive job" onClick={() => archiveEntry('job',job)}><Icon name="archive"/></button></>}
-          {assignments.filter(a => canEdit(a.manager_id)).map(a => <Fragment key={a.id}>{a.nominee_name && <button className="action-icon" aria-label={`Edit nomination for ${a.nominee_name}`} title={`Edit ${a.nominee_name}`} onClick={() => setOverlay({ type: 'nomination', job, assignment:a })}><Icon name="edit"/></button>}<button className="action-icon" aria-label={`Withdraw ${assignmentName(a)}`} title={`Withdraw ${assignmentName(a)}`} disabled={busy.includes(`/assignments/${a.id}/withdraw`)} onClick={() => void action(`/assignments/${a.id}/withdraw`,{revision:a.revision},'Assignment withdrawn')}><Icon name="withdraw"/></button></Fragment>)}
         </div>
       </div>
       {job.instructions && <details className="instructions" open={expanded || undefined}><summary>Job instructions</summary><p>{job.instructions}</p></details>}
       {job.instructions && <p className="print-instructions">{job.instructions}</p>}
-      {assignments.length > 0 && <ul className="helpers">{assignments.map(a => <li key={a.id}><span className="helper-name">{assignmentName(a)}{a.participant_id === me!.id && <small> - you</small>}</span>{a.nominee_name && <small className="nomination-note">Nominated by {a.manager_id === me!.id ? 'you' : nameOf(a.manager_id)}</small>}</li>)}</ul>}
+      {assignments.length > 0 && <ul className="helpers">{assignments.map(a => <li key={a.id} aria-label={assignmentName(a)}>
+        <div className="helper-info"><span className="helper-name">{assignmentName(a)}{a.participant_id === me!.id && <small> - you</small>}</span>{a.nominee_name && <small className="nomination-note">Nominated by {a.manager_id === me!.id ? 'you' : nameOf(a.manager_id)}</small>}</div>
+        {canEdit(a.manager_id) && <div className="person-controls">{a.nominee_name && <button className="action-icon" aria-label={`Edit nomination for ${a.nominee_name}`} title={`Edit ${a.nominee_name}`} onClick={() => setOverlay({ type: 'nomination', job, assignment:a })}><Icon name="edit"/></button>}<button className="action-icon" aria-label={`Withdraw ${assignmentName(a)}`} title={`Withdraw ${assignmentName(a)}`} disabled={busy.includes(`/assignments/${a.id}/withdraw`)} onClick={() => void action(`/assignments/${a.id}/withdraw`,{revision:a.revision},'Assignment withdrawn')}><Icon name="withdraw"/></button></div>}
+      </li>)}</ul>}
       <div className="job-actions">{!full && !self && <button className="help-button" disabled={busy.includes(`/jobs/${job.id}/volunteer`)} onClick={() => void action(`/jobs/${job.id}/volunteer`,{},'You are on the list')}>I can help</button>}{!full && <button className="text-button" onClick={() => setOverlay({type:'nomination',job})}>Nominate someone</button>}</div>
     </section>;
   }
@@ -150,7 +154,7 @@ export function App() {
       {timed && <div className="time-badge"><span>{activity.day_offset !== 0 && <small>{dayLabel(activity.day_offset)}</small>}{activityTime({ ...activity, day_offset: 0, end_time: null })}{shifted && <small className="previous-time">Was {activityTime({ ...source, end_time: null })}</small>}</span></div>}
       <div className={`activity-card ${me?.role === 'organiser' && !isNew && !preview ? 'draggable-card' : ''}`} {...drag.cardProps(source,me?.role === 'organiser' && !isNew && !preview)}><div className="activity-picture"><img draggable={false} src={`/illustrations/${activity.illustration}.svg`} alt={`${activity.illustration} icon`} width={88} height={88} loading="lazy"/></div>
       <div className="activity-title"><div className="activity-state"><span className={`activity-status ${activity.status}`}>{isNew ? 'Unsaved preview' : activity.status === 'draft' ? 'Draft - awaiting organiser' : 'Confirmed'}</span>{preview?.activityId === activity.id && !isNew && <small>Unsaved changes</small>}</div><p className="entry-kicker">{activity.timing_mode === 'fixed' ? 'FIXED START - ' : ''}{activity.duration_minutes} MIN{activity.duration_estimated ? ' - ESTIMATED' : ''}{activity.end_time ? ` - Until ${(activity.end_day_offset !== activity.day_offset ? dayLabel(activity.end_day_offset) + ' - ' : '') + clockTime(activity.end_time)}` : ''}</p><div className="activity-heading"><h3>{activity.title}</h3>{!isNew && <div className="activity-controls">{canEdit(source.creator_id) && <><button className="action-icon" aria-label="Edit activity" title="Edit activity" onClick={() => setOverlay({type:'activity',activity:source})}><Icon name="edit"/></button><button className="action-icon" aria-label="Archive activity" title="Archive activity" onClick={() => archiveEntry('activity',source)}><Icon name="archive"/></button></>}{me!.role === 'organiser' && source.status === 'draft' && <button className="action-icon confirm-activity" aria-label="Confirm activity" title="Confirm activity" disabled={busy.includes(`/activities/${source.id}/confirm`)} onClick={() => void action(`/activities/${source.id}/confirm`,{revision:source.revision},'Activity confirmed')}><Icon name="check"/></button>}</div>}</div></div>
-      <div className="activity-body">{activity.description && <p className="description">{activity.description}</p>}{activity.location_note && <p className="location-note">{activity.location_note}</p>}
+      <div className="activity-body"><RichDetails text={activity.description} content={activity.description_content}/>{activity.location_note && <p className="location-note">{activity.location_note}</p>}
         {isNew ? <p className="preview-help">Choose the time needed in the panel. Save to share this draft.</p> : <>
           <div className="entry-meta"><span>Added by {nameOf(activity.creator_id)}</span></div>
           {jobs.length > 0 && <div className="job-list"><p className="jobs-label">HELPING HANDS</p>{jobs.map(j => renderJob(j))}</div>}<button className="text-button add-job" onClick={() => setOverlay({ type: 'job', activityId: activity.id })}>＋ Add a job</button>
@@ -195,7 +199,7 @@ export function App() {
       {overlay.type === 'login' && <SignIn onSession={acceptSession}/>}
       {overlay.type === 'activity' && data && <ActivityPlanner key={overlay.activity?.id ?? JSON.stringify(overlay.placement ?? 'new')} activity={overlay.activity} timeline={data} participantId={me!.id} isOrganiser={me!.role === 'organiser'} initialPlacement={overlay.placement} onPreview={showPreview} onTimeline={setData} onSaved={saved} cancel={close}/>}
       {overlay.type === 'job' && <JobForm activityId={overlay.activityId} job={overlay.job} latest={data?.jobs.find(j => j.id === overlay.job?.id)} onSaved={saved} cancel={close}/>}
-      {overlay.type === 'nomination' && <NominationForm job={overlay.job} assignment={overlay.assignment} onSaved={saved} cancel={close}/>}
+      {overlay.type === 'nomination' && <NominationForm key={overlay.assignment?.id ?? overlay.job.id} job={data?.jobs.find(j => j.id === overlay.job.id) ?? overlay.job} taken={data?.assignments.filter(a => a.job_id === overlay.job.id).length ?? 0} refresh={refresh} assignment={overlay.assignment} onSaved={saved} cancel={close}/>}
       {overlay.type === 'settings' && <SettingsForm activities={data?.activities ?? []} wedding={overlay.wedding} latest={data?.wedding ?? overlay.wedding} onSaved={saved} cancel={close}/>}
       {overlay.type === 'confirm' && <ConfirmForm text={overlay.text} path={overlay.path} body={overlay.body} onSaved={saved} cancel={close}/>}
       {overlay.type === 'profile' && <GuestName participant={me!} saved={result => { setSession(result); setNotice('Name saved'); close(); void refresh(); }}/>}

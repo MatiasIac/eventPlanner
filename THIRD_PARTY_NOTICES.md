@@ -7,6 +7,7 @@ JavaScript packages retain their upstream licences in their distributed packages
 | Dependency | Licence |
 | --- | --- |
 | React / React DOM | MIT |
+| Tiptap / ProseMirror | MIT |
 | Vite / TypeScript / tsx | MIT / Apache-2.0 / MIT |
 | pg | MIT |
 | Zod | MIT |

@@ -19,7 +19,7 @@ export async function handle(request: Request, ip = 'local'): Promise<Response> 
     if (isWrite) originCheck(request);
     let bytes: Buffer = Buffer.alloc(0); let body: unknown = {};
     if (isWrite) {
-      bytes = await boundedBody(request, 16384);
+      bytes = await boundedBody(request, 65536);
       {
         if (!request.headers.get('content-type')?.startsWith('application/json')) throw new ApiError(415, 'Send this request as JSON.');
         try { body = JSON.parse(bytes.toString('utf8') || '{}'); } catch { throw new ApiError(400, 'The request could not be read.'); }

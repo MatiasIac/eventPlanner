@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { Activity, Timeline } from '../shared/model';
-import { activityTime, illustrations } from '../shared/model';
+import { activityTime } from '../shared/model';
 import { durationChoices, planSchedule, type Placement } from '../shared/schedule';
 import { api, ApiFailure } from './api';
 import { Conflict, ErrorNotice, Field, FormActions, fieldA11y, useSave } from './components';
 import { DayPicker } from './DayPicker';
+import { IconPicker } from './IconPicker';
+const DetailsEditor = lazy(() => import('./DetailsEditor').then(module => ({ default: module.DetailsEditor })));
 
 export type TimelinePreview = { activities: Activity[]; activityId: string; isNew: boolean };
 export type ActivityPlannerProps = {
@@ -21,7 +23,7 @@ export function ActivityPlanner({ activity, timeline, participantId, isOrganiser
   const [clock, setClock] = useState(activity?.start_time?.slice(0,5) ?? (initialPlacement?.mode === 'absolute' ? initialPlacement.start_time : timeline.wedding.start_time.slice(0,5)));
   const [day, setDay] = useState(activity?.plan_day ?? (initialPlacement?.mode === 'absolute' || initialPlacement?.mode === 'untimed' ? initialPlacement.day_offset ?? 0 : timeline.activities.find(a => initialPlacement?.mode === 'relative' && a.id === initialPlacement.anchor_id)?.plan_day ?? 0));
   const [draft, setDraft] = useState({
-    title: activity?.title ?? '', description: activity?.description ?? '', duration_minutes: activity?.duration_minutes ?? 15,
+    title: activity?.title ?? '', description: activity?.description ?? '', description_content: activity?.description_content ?? null, duration_minutes: activity?.duration_minutes ?? 15,
     location_note: activity?.location_note ?? '', illustration: activity?.illustration ?? 'leaf',
     take_care: false, responsibility_title: 'Take care of this activity', confirm: false, revision: activity?.revision,
     timing_mode: activity?.timing_mode ?? (initialPlacement?.mode === 'absolute' && initialPlacement.day_offset !== 0 ? 'fixed' : 'linked') as 'fixed' | 'linked',
@@ -38,7 +40,7 @@ export function ActivityPlanner({ activity, timeline, participantId, isOrganiser
   const plan = useMemo(() => {
     const baseline = snapshot.find(a => a.id === activity?.id) ?? activity;
     const row: Activity = {
-      id, title: draft.title || 'New activity', description: draft.description, duration_minutes: draft.duration_minutes,
+      id, title: draft.title || 'New activity', description: draft.description, description_content: draft.description_content, duration_minutes: draft.duration_minutes,
       duration_estimated: false, start_time: null, end_time: null, day_offset: 0, end_day_offset: 0,
       timing_mode: draft.timing_mode, plan_day: baseline?.plan_day ?? day,
       sort_order: 0, creator_id: participantId, revision: draft.revision ?? 1, archived: false,
@@ -65,7 +67,7 @@ export function ActivityPlanner({ activity, timeline, participantId, isOrganiser
   async function loadCurrent() {
     const current = await reviewSchedule(), row = current?.activities.find(a => a.id === activity?.id);
     if (!row) return;
-    setDraft({ ...draft, ...row, confirm: false }); setClock(row.start_time?.slice(0,5) ?? timeline.wedding.start_time.slice(0,5)); setDay(row.plan_day);
+    setDraft({ ...draft, ...row, description_content: row.description_content ?? null, confirm: false }); setClock(row.start_time?.slice(0,5) ?? timeline.wedding.start_time.slice(0,5)); setDay(row.plan_day);
     setWhere({ mode: 'keep' });
   }
   function changeMode(mode: string) {
@@ -78,7 +80,7 @@ export function ActivityPlanner({ activity, timeline, participantId, isOrganiser
     await save(activity ? `/activities/${activity.id}` : '/activities', activity ? 'PUT' : 'POST', draft, async () => {
       if (plan.error) throw new ApiFailure(plan.error);
       if (scheduleChanged) throw new ApiFailure('Review the latest running order before saving. Your text is still here.');
-      return { title: draft.title, description: draft.description, duration_minutes: draft.duration_minutes,
+      return { title: draft.title, description: draft.description, description_content: draft.description_content, duration_minutes: draft.duration_minutes,
         location_note: draft.location_note, illustration: draft.illustration,
         take_care: draft.take_care, responsibility_title: draft.responsibility_title, confirm: draft.confirm,
         revision: draft.revision, timing_mode: draft.timing_mode, placement: effectivePlacement, schedule_revision: version };
@@ -114,9 +116,9 @@ export function ActivityPlanner({ activity, timeline, participantId, isOrganiser
         {!plan.error && <p>{shifted.length ? `${shifted.length} following ${shifted.length === 1 ? 'activity changes' : 'activities change'} time. The preview shows the new running order.` : 'No other activity times change.'}</p>}
         <small>Linked activities move together. Fixed starts and other planning days stay in place.</small>
       </div>
-      <Field name="description" label="A few helpful details" error={error}><textarea id="description" rows={3} maxLength={1200} value={draft.description} onChange={e => update('description', e.target.value)} {...fieldA11y('description', error)}/></Field>
+      <Suspense fallback={<p>Loading editor...</p>}><DetailsEditor text={draft.description} content={draft.description_content} disabled={pending || reviewing} error={error?.fields.description_content || error?.fields.description} onChange={(description, description_content) => setDraft(d => ({ ...d, description, description_content }))}/></Suspense>
       <Field name="location_note" label="Location note (optional)"><input id="location_note" maxLength={240} value={draft.location_note} onChange={e => update('location_note', e.target.value)}/></Field>
-      <Field name="illustration" label="Icon"><select id="illustration" value={draft.illustration} onChange={e => update('illustration', e.target.value)}>{illustrations.map(x => <option key={x} value={x}>{x === 'leaf' ? 'Simple leaf' : x[0].toUpperCase() + x.slice(1)}</option>)}</select></Field>
+      <IconPicker value={draft.illustration} onChange={value => update('illustration', value)}/>
       {!activity && <div className="offer"><label className="check"><input type="checkbox" checked={draft.take_care} onChange={e => update('take_care', e.target.checked)}/>I’ll take care of this</label>{draft.take_care && <><p>This creates a one-person job with you assigned, as part of the same save.</p><Field name="responsibility_title" label="Your job"><input id="responsibility_title" required maxLength={120} value={draft.responsibility_title} onChange={e => update('responsibility_title', e.target.value)}/></Field></>}</div>}
       {(!activity || activity.status === 'draft') && <div className="draft-explanation">{isOrganiser ? <label className="check"><input type="checkbox" checked={draft.confirm} onChange={e => update('confirm', e.target.checked)}/>Confirm this activity when saving</label> : <p>This will appear as a draft, with the proposed times, until an organiser confirms it.</p>}</div>}
     </fieldset>

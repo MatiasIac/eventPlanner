@@ -8,3 +8,5 @@ createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></R
 import './days.css';
 
 import './simple.css';
+import './themes.css';
+import './details.css';

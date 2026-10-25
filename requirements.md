@@ -1,6 +1,6 @@
 ﻿# Collaborative planner requirements
 
-Version 1.3 - 25 October 2026
+Version 1.4 - 25 October 2026
 
 This is the current implementation brief. The owner's follow-ups replace the original event branding, guest-login, account-recovery, image-upload and export requirements. Keep the application small and straightforward.
 
@@ -13,11 +13,11 @@ Guests enter immediately, without logging in, entering an access code or supplyi
 ## Interface
 
 - Use the configured **Title** as the sole main heading and browser title, without a suffix or separator. No fixed slogan, event branding or demonstration banner.
-- Settings contains **Title**, **Date (optional)**, **Venue (optional)** and **Start time**. No timezone control.
+- Settings contains **Title**, **Date (optional)**, **Venue (optional)**, **Start time** and **Page theme**. No timezone control. Offer Beach, Night, Garden, Sunset and Lavender themes; Beach is the default. Organisers save the shared choice for every visitor, including panels and forms. Keep printing legible on white paper.
 - Keep a compact header with Add activity, My jobs, refresh, optional name editing and a small menu. Retain Print timeline, organiser sign-in, Settings, Archived entries and organiser sign-out as appropriate. Remove My access, return codes, participant access and JSON export.
 - Show no Last updated or All times in text. Errors and offline status remain visible when needed.
 - Use a normally scrolling, centred vertical timeline with small bundled icons, time badges over the line, short descriptions and compact helping-hand cards. Do not build a large hero, dashboard, canvas, chat system or additional account tools.
-- Activity edit and archive controls are icons with accessible labels. Job management, nomination editing and withdrawal controls are icons in the top-right area of the job card. Keep title, helper capacity, status and assigned names visible.
+- Activity edit and archive controls are icons with accessible labels. Job management icons stay at the top right; nomination editing and withdrawal icons sit beside each person's name. Keep title, helper capacity, status and assigned names visible.
 - Only the first activity has **Add before**, on the timeline outside the card. Use **Add activity** between entries and after the last entry.
 - Activity creation/editing opens a non-modal panel beside the timeline. Keep the schedule visible and scrollable so people can compare times while editing. On phones use a collapsible bottom panel.
 - Provide explicit Save and Cancel, pending and saved states, and an unsaved timing preview. Preserve draft text after errors and background updates.
@@ -26,6 +26,8 @@ Guests enter immediately, without logging in, entering an access code or supplyi
 ## Scheduling
 
 Activity fields: title (required, maximum 120 characters), description (maximum 1,200), optional location note (maximum 240), bundled icon, duration, optional start time, planning day, creator, revision and draft/confirmed state. Do not provide image upload or alternate-text editing. Use the existing bundled icon set, with a quiet leaf fallback.
+
+Show a visual, keyboard-accessible grid of at least 24 bundled icons instead of a dropdown. A few helpful details supports bold, italic and bullet lists with a minimal toolbar. Preserve formatting when saving, editing, sharing and printing; preserve existing plain descriptions. Validate a bounded document structure and render safe elements, never arbitrary HTML.
 
 1. Add before or after an existing activity by selecting a duration: presets 5, 10, 15, 30, 45, 60, 90 and 120 minutes, plus custom 1-1,440 minutes.
 2. Relative additions are linked. An addition after an activity begins at its end; before a linked activity takes that activity's start. Before a fixed appointment, it ends at the appointment's start.
@@ -45,6 +47,8 @@ Activity fields: title (required, maximum 120 characters), description (maximum 
 A job belongs to an activity and has a title, optional instructions, helper capacity (1-100, default 1), creator and revision. Show open/covered status and all helpers compactly.
 
 Guests and organisers can volunteer themselves or nominate a displayed name on someone else's behalf. Record the managing identity separately from the nominee. Duplicate display names do not imply the same person. Prevent duplicate self-assignments; allow distinct nominees with the same name.
+
+Nomination forms offer one name field per vacancy and save all entered names in one action; unused places can remain blank. Save the group atomically and prevent overbooking during concurrent claims. Retain entered names on failure. Each saved nomination remains individually editable and withdrawable beside its name, subject to ownership permissions.
 
 The current participant can change/withdraw their own nominations and assignments. Organisers can manage all assignments. Show who nominated someone. My jobs groups current responsibilities and managed nominations by activity and returns to the timeline without losing the useful scroll position.
 
@@ -79,7 +83,7 @@ Organiser credentials are server-only. Browser sessions use cryptographically ra
 
 Use stable IDs and foreign keys for settings, participants, sessions, activities, jobs and assignments. Fetch the small timeline in one bounded request. Do not expose session hashes or access secrets. Responses are private and not shared-cacheable.
 
-Limits: 500 activities, 2,500 jobs, 10,000 assignments, 2,000 identities, 16 KB JSON requests. Include archived records in storage bounds.
+Limits: 500 activities, 2,500 jobs, 10,000 assignments, 2,000 identities, 64 KB JSON requests. Formatted descriptions allow at most 1,200 text characters, 400 document nodes and eight nesting levels. Include archived records in storage bounds.
 
 Use bundled static SVG icons only. Remove upload/retrieval routes, image processing dependencies, Blob storage integration and the media volume mount. Legacy database columns and historical files may remain untouched for non-destructive compatibility; do not delete existing data as part of simplifying the interface.
 
@@ -97,5 +101,5 @@ Prepare code and documentation locally. Hosted release requires the owner's depl
 
 ## Acceptance
 
-The user can open without login, see the configured title, add relative or fixed-time activities while viewing the timeline, choose durations and dates several days away, and volunteer using compact cards. Organisers can set the start, confirm shared drafts, drag cards with visual feedback, edit through icons and restore archives. Removed access, upload, timezone, export and branding features are absent. Saved plans survive the Docker upgrade.
+The user can open without login, see the configured title, add relative or fixed-time activities while viewing the timeline, choose durations and dates several days away, and volunteer using compact cards. Users can nominate all vacant places together, manage each name separately, choose icons visually and format helpful details. Organisers can set the shared theme and start, confirm shared drafts, drag cards with visual feedback, edit through icons and restore archives. Removed access, upload, timezone, export and branding features are absent. Saved plans survive the Docker upgrade.
 

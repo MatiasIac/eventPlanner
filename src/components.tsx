@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { api, ApiFailure } from './api';
 import type { Activity, Assignment, Job, Wedding } from '../shared/model';
 import { planWeddingStart } from '../shared/schedule';
+import { ThemePicker } from './ThemePicker';
+import { RichDetails } from './RichDetails';
 
 export function SidePanel({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
   const [minimised, setMinimised] = useState(false);
@@ -40,7 +42,7 @@ export function useSave(onSaved: (message?: string) => void) {
 }
 export function FormActions({ pending, cancel, label = 'Save' }: { pending: boolean; cancel: () => void; label?: string }) { return <div className="form-actions"><button type="button" className="quiet" onClick={cancel} disabled={pending}>Cancel</button><button className="primary" type="submit" disabled={pending}>{pending ? 'Saving…' : label}</button></div>; }
 export function Conflict({ current, changed, load }: { current?: any; changed: boolean; load: () => void }) {
-  return changed || current ? <div className="conflict" role="status"><strong>This entry has changed.</strong><p>Your draft is still here. Review the current version before saving.</p>{current && <div className="new-version"><strong>{current.title ?? current.nominee_name}</strong><p>{current.description ?? current.instructions}</p>{current.start_time && <small>Start: {current.start_time} · {current.day_offset ? 'Next day' : 'Main day'}</small>}</div>}<button type="button" onClick={load}>Replace my draft with latest version</button></div> : null;
+  return changed || current ? <div className="conflict" role="status"><strong>This entry has changed.</strong><p>Your draft is still here. Review the current version before saving.</p>{current && <div className="new-version"><strong>{current.title ?? current.nominee_name}</strong><RichDetails text={current.description ?? current.instructions ?? ''} content={current.description_content}/>{current.start_time && <small>Start: {current.start_time} · {current.day_offset ? 'Next day' : 'Main day'}</small>}</div>}<button type="button" onClick={load}>Replace my draft with latest version</button></div> : null;
 }
 export function JobForm({ activityId, job, latest, onSaved, cancel }: { activityId: string; job?: Job; latest?: Job; onSaved: (message?: string) => void; cancel: () => void }) {
   const [draft, setDraft] = useState({ title: '', instructions: '', capacity: 1, take_care: false, revision: job?.revision, ...job });
@@ -53,10 +55,29 @@ export function JobForm({ activityId, job, latest, onSaved, cancel }: { activity
     {!job && <label className="check offer"><input type="checkbox" checked={draft.take_care} onChange={e => setDraft({ ...draft, take_care: e.target.checked })}/>I’ll do this <small>— save this job with me as a helper</small></label>}
   </fieldset><FormActions pending={pending} cancel={cancel}/></form>;
 }
-export function NominationForm({ job, assignment, onSaved, cancel }: { job: Job; assignment?: Assignment; onSaved: (message?: string) => void; cancel: () => void }) {
-  const [name, setName] = useState(assignment?.nominee_name ?? ''); const [revision, setRevision] = useState(assignment?.revision);
+export function NominationForm({ job, taken, assignment, refresh, onSaved, cancel }: { job: Job; taken: number; assignment?: Assignment; refresh: () => Promise<void>; onSaved: (message?: string) => void; cancel: () => void }) {
+  const [names, setNames] = useState<string[]>(assignment ? [assignment.nominee_name ?? ''] : Array(Math.max(1,job.capacity-taken)).fill(''));
+  const [revision, setRevision] = useState(assignment?.revision);
   const { pending, error, setError, save } = useSave(onSaved);
-  return <form onSubmit={e => { e.preventDefault(); void save(assignment ? `/assignments/${assignment.id}` : `/jobs/${job.id}/nominate`, assignment ? 'PUT' : 'POST', { nominee_name: name, revision }); }}><p className="form-intro">Nominate someone for <strong>{job.title}</strong>. Their name will appear on the timeline. You can change or withdraw this nomination.</p><ErrorNotice error={error}/>{error?.current && <Conflict changed current={error.current} load={() => { setName(error.current.nominee_name); setRevision(error.current.revision); setError(null); }}/>}<fieldset disabled={pending}><Field name="nominee_name" label="Their display name" error={error}><input id="nominee_name" autoFocus required maxLength={80} value={name} onChange={e => setName(e.target.value)} {...fieldA11y('nominee_name', error)}/></Field></fieldset><FormActions pending={pending} cancel={cancel}/></form>;
+  const available = Math.max(0, (error?.current?.capacity ?? job.capacity) - (error?.current?.assignments?.length ?? taken));
+  const filled = names.map(name => name.trim()).filter(Boolean);
+  const count = assignment ? 1 : Math.max(1, available, names.length);
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!filled.length) { setError(new ApiFailure('Enter at least one name.')); return; }
+    if (!assignment && filled.length > available) { setError(new ApiFailure(`There are ${available} open places. Keep up to ${available} names, or refresh the places.`,409,error?.fields,error?.current)); return; }
+    void save(assignment ? `/assignments/${assignment.id}` : `/jobs/${job.id}/nominate`, assignment ? 'PUT' : 'POST', assignment ? { nominee_name: filled[0], revision } : { nominee_names: filled });
+  }
+  return <form onSubmit={submit} className="nomination-form"><p className="form-intro">{assignment ? 'Edit this nomination for ' : 'Add helpers for '}<strong>{job.title}</strong>.{!assignment && ' Enter one name per open place; leave unused places blank.'}</p>
+    {!assignment && <p className="vacancies" role="status">{available} {available === 1 ? 'place' : 'places'} available - {filled.length} names entered</p>}
+    <ErrorNotice error={error}/>
+    {!assignment && error?.status === 409 && <button className="text-button" type="button" onClick={async () => { await refresh(); setError(null); }}>Refresh places</button>}
+    {assignment && error?.current && <Conflict changed current={error.current} load={() => { setNames([error.current.nominee_name]); setRevision(error.current.revision); setError(null); }}/>}
+    <fieldset disabled={pending}>{Array.from({length: count},(_,index) => {
+      const name = assignment || count === 1 ? 'nominee_name' : `nominee_names.${index}`;
+      return <Field key={index} name={name} label={assignment || count === 1 ? 'Their display name' : `Name ${index+1}`} error={error}><input id={name} autoFocus={index === 0} required={Boolean(assignment)} maxLength={80} autoComplete="off" value={names[index] ?? ''} onChange={e => setNames(old => { const next = [...old]; next[index] = e.target.value; return next; })} {...fieldA11y(name,error)}/></Field>;
+    })}</fieldset><FormActions pending={pending} cancel={cancel}/>
+  </form>;
 }
 export function SettingsForm({ wedding, latest, activities, onSaved, cancel }: { wedding: Wedding; latest: Wedding; activities: Activity[]; onSaved: (message?: string) => void; cancel: () => void }) {
   const [draft, setDraft] = useState({ ...wedding, start_time: wedding.start_time.slice(0,5) }); const { pending, error, setError, save } = useSave(onSaved);
@@ -69,6 +90,7 @@ export function SettingsForm({ wedding, latest, activities, onSaved, cancel }: {
     {changesStart && <div className="timing-preview" role="status">{plan.error ?? `${count} linked ${count === 1 ? 'activity will' : 'activities will'} move. Fixed start times stay unchanged.`}</div>}
     <Field name="title" label="Title" error={error}><input id="title" required maxLength={120} value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} {...fieldA11y('title', error)}/></Field>
     <Field name="date" label="Date (optional)" error={error}><input id="date" type="date" value={draft.date ?? ''} onChange={e => setDraft({ ...draft, date: e.target.value || null })} {...fieldA11y('date', error)}/></Field>
+    <ThemePicker value={draft.theme ?? 'beach'} onChange={theme => setDraft({ ...draft, theme })}/>
     <Field name="venue" label="Venue (optional)" error={error}><input id="venue" maxLength={240} value={draft.venue} onChange={e => setDraft({ ...draft, venue: e.target.value })} {...fieldA11y('venue', error)}/></Field>
   </fieldset><FormActions pending={pending} cancel={cancel}/></form>;
 }

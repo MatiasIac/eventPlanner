@@ -1,6 +1,20 @@
 // Original geometric illustrations for this application. No third-party artwork.
 import { mkdirSync, writeFileSync } from 'node:fs';
 const drawings = {
+  sun: '<circle cx="48" cy="48" r="17"/><path d="M48 14v9m0 50v9M14 48h9m50 0h9M24 24l7 7m34 34 7 7M24 72l7-7m34-34 7-7"/>',
+  waves: '<path d="M15 36c11-17 22 17 33 0s22 17 33 0M15 49c11-17 22 17 33 0s22 17 33 0M15 62c11-17 22 17 33 0s22 17 33 0"/>',
+  palm: '<path d="M45 79c8-21 13-35 10-49M55 30c-14-17-31-11-36 5 16-8 26-4 36-5Zm0 0c8-19 25-13 28 2-12-6-19-5-28-2Zm0 0c-15 0-24 11-20 25 5-12 11-17 20-25Zm0 0c11-2 21 12 17 25-3-11-8-18-17-25ZM28 80h42"/>',
+  shell: '<path d="M41 75 18 45C4 20 40 9 48 26c8-17 44-6 30 19L55 75ZM48 26v49M30 25l14 50M66 25 52 75M21 39l21 36M75 39 54 75M40 75h16v7H40Z"/>',
+  moon: '<path d="M65 17a31 31 0 1 0 14 53A32 32 0 0 1 65 17Z"/><path d="m74 27 2 6 6 2-6 2-2 6-2-6-6-2 6-2Z"/>',
+  stars: '<path d="m37 17 7 17 18 1-14 12 5 18-16-10-16 10 5-18-14-12 18-1ZM72 16l3 8 9 2-9 3-3 9-3-9-9-3 9-2ZM69 56l4 10 11 2-11 4-4 11-4-11-11-4 11-2Z"/>',
+  coffee: '<path d="M22 36h43v22c0 24-43 24-43 0ZM65 40h7c18 0 13 22-7 22M17 79h58M32 26c-9-7 9-10 0-17M45 26c-9-7 9-10 0-17M58 26c-9-7 9-10 0-17"/>',
+  tables: '<path d="M15 35h66v12H15ZM23 47v30M73 47v30M29 47v30M67 47v30M18 77h16M62 77h16"/><path d="M41 35V24h14v11M48 24V14"/>',
+  chairs: '<path d="M29 21h38v34H29zM24 55h48v10H24zM29 65v17M67 65v17M35 27v21M48 27v21M61 27v21"/>',
+  gift: '<path d="M20 44h56v36H20ZM16 33h64v11H16ZM43 33h10v47M48 33C13 33 25 5 39 18l9 15Zm0 0C83 33 71 5 57 18Z"/>',
+  heart: '<path d="M48 78 19 49C-4 26 29 5 48 28 67 5 100 26 77 49Z"/>',
+  clock: '<circle cx="48" cy="48" r="31"/><path d="M48 28v22l14 9M48 17v6M48 73v6M17 48h6M73 48h6"/>',
+  walk: '<circle cx="55" cy="20" r="7"/><path d="m50 33-13 9-9 16M50 33l10 16 13 5M50 33l-7 26 17 19M43 59 29 79"/>',
+  games: '<rect x="19" y="19" width="58" height="58" rx="12"/><circle cx="34" cy="34" r="3"/><circle cx="62" cy="34" r="3"/><circle cx="48" cy="48" r="3"/><circle cx="34" cy="62" r="3"/><circle cx="62" cy="62" r="3"/>',
   rings: '<circle cx="37" cy="52" r="16"/><circle cx="59" cy="52" r="16"/><path d="m48 24 5 7-5 7-5-7zM43 31h10"/>',
   flowers: '<path d="m35 75 13-31 13 31M39 74h18M48 58c-17-1-20-9-21-15 12 1 19 5 21 15M49 65c17-2 21-9 22-15-12 1-20 6-22 15"/><path d="M48 38c-15 7-19-3-11-9-4-11 8-15 11-5 6-10 17-6 12 4 10 6 5 17-12 10Z"/>',
   photographs: '<rect x="22" y="34" width="52" height="36" rx="7"/><path d="m35 34 4-8h18l4 8"/><circle cx="48" cy="52" r="12"/><circle cx="65" cy="42" r="2"/><path d="M42 52a6 6 0 0 1 6-6"/>',

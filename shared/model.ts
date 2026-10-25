@@ -1,9 +1,11 @@
 export type Participant = { id: string; display_name: string; role: 'participant' | 'organiser'; revoked?: boolean };
-export type Wedding = { id: number; title: string; date: string | null; venue: string; start_time: string; revision: number; schedule_revision: number; demonstration: boolean };
+import type { ThemeId } from './themes';
+import type { RichDocument } from './richText';
+export type Wedding = { id: number; title: string; date: string | null; venue: string; start_time: string; revision: number; schedule_revision: number; demonstration: boolean; theme: ThemeId };
 export type Activity = {
   id: string; title: string; description: string; start_time: string | null; day_offset: number;
   end_time: string | null; end_day_offset: number; location_note: string;
-  illustration: string; 
+  illustration: string; description_content?: RichDocument | null;
   sort_order: number; creator_id: string; revision: number; archived: boolean;
   duration_minutes: number; duration_estimated: boolean; status: 'draft' | 'confirmed';
   confirmed_by: string | null; confirmed_at: string | null;
@@ -12,7 +14,7 @@ export type Activity = {
 export type Job = { id: string; activity_id: string; title: string; instructions: string; capacity: number; creator_id: string; revision: number; archived: boolean };
 export type Assignment = { id: string; job_id: string; participant_id: string | null; nominee_name: string | null; manager_id: string; active: boolean; revision: number };
 export type Timeline = { wedding: Wedding; activities: Activity[]; jobs: Job[]; assignments: Assignment[]; participants: Participant[]; fetched_at: string };
-export const illustrations = ['rings', 'flowers', 'photographs', 'drinks', 'food', 'speeches', 'cake', 'music', 'transport', 'leaf'] as const;
+export const illustrations = ['rings', 'flowers', 'photographs', 'drinks', 'food', 'speeches', 'cake', 'music', 'transport', 'leaf', 'sun', 'waves', 'palm', 'shell', 'moon', 'stars', 'coffee', 'tables', 'chairs', 'gift', 'heart', 'clock', 'walk', 'games'] as const;
 export function clockTime(time: string): string {
   const [hour, minute] = time.split(':').map(Number);
   return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour >= 12 ? 'pm' : 'am'}`;

@@ -337,3 +337,59 @@ test('access attempt throttling is persisted across requests', async () => {
   for (let i = 0; i < 30; i++) assert.equal((await make()).status, 401);
   assert.equal((await make()).status, 429);
 });
+
+test('group nominations are atomic, retry-safe and individually owned; concurrent groups cannot overfill', async () => {
+  const a = await activity(), j = await job(a.id, alice, { capacity: 4 });
+  await request(`/jobs/${j.id}/volunteer`, 'POST', {}, bob);
+  const key = randomUUID(), payload = { nominee_names: [' One ', 'Two', 'Three'] };
+  const [first, retry] = await Promise.all([request(`/jobs/${j.id}/nominate`,'POST',payload,alice,key), request(`/jobs/${j.id}/nominate`,'POST',payload,alice,key)]);
+  assert.equal(first.status,200); assert.deepEqual(first.data,retry.data);
+  assert.deepEqual(first.data.assignments.map((x: any) => x.nominee_name),['One','Two','Three']);
+  const nominee = first.data.assignments[1];
+  assert.equal((await request(`/assignments/${nominee.id}`,'PUT',{nominee_name:'Wrong',revision:1},bob)).status,403);
+  assert.equal((await request(`/assignments/${nominee.id}`,'PUT',{nominee_name:'New two',revision:1},alice)).status,200);
+  assert.equal((await request(`/assignments/${nominee.id}/withdraw`,'POST',{revision:2},alice)).status,200);
+  const tooMany = await request(`/jobs/${j.id}/nominate`,'POST',{nominee_names:['Four','Five']},alice);
+  assert.equal(tooMany.status,409); assert.match(tooMany.data.error,/No names were saved/);
+  assert.equal((await database().query('SELECT count(*)::int AS count FROM assignments WHERE job_id=$1',[j.id])).rows[0].count,4);
+  const racing = await job(a.id,alice,{capacity:3});
+  const groups = await Promise.all([request(`/jobs/${racing.id}/nominate`,'POST',{nominee_names:['A','B']},alice), request(`/jobs/${racing.id}/nominate`,'POST',{nominee_names:['C','D']},bob)]);
+  assert.deepEqual(groups.map(r=>r.status).sort(),[200,409]);
+  assert.equal((await database().query('SELECT count(*)::int AS count FROM assignments WHERE job_id=$1',[racing.id])).rows[0].count,2);
+  for (const names of [[],['   '],['x'.repeat(81)],Array(101).fill('Name')]) assert.equal((await request(`/jobs/${racing.id}/nominate`,'POST',{nominee_names:names},alice)).status,400);
+});
+
+test('formatted descriptions persist safely, derive plain text and preserve compatibility with older clients', async () => {
+  const doc = { type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Welcome',marks:[{type:'bold'}]},{type:'text',text:' everyone',marks:[{type:'italic'}]}]},{type:'bulletList',content:[{type:'listItem',content:[{type:'paragraph',content:[{type:'text',text:'Bring water'}]}]}]}] };
+  const a = await activity(alice,{description:'Ignored plain text',description_content:doc,illustration:'waves'});
+  assert.equal(a.description,'Welcome everyone\nBring water'); assert.deepEqual(a.description_content,doc);
+  const state = await schedule(); assert.deepEqual(state.activities.find((x:Activity)=>x.id===a.id).description_content,doc);
+  const retained = await request(`/activities/${a.id}`,'PUT',{...a,description_content:undefined,title:'New title',placement:{mode:'keep'}},alice);
+  assert.equal(retained.status,200); assert.deepEqual(retained.data.description_content,doc);
+  const changed = await request(`/activities/${a.id}`,'PUT',{...retained.data,description_content:undefined,description:'Older client text',placement:{mode:'keep'}},alice);
+  assert.equal(changed.status,200); assert.equal(changed.data.description_content,null);
+  for (const description_content of [
+    {type:'doc',content:[{type:'image',attrs:{src:'javascript:alert(1)'}}]},
+    {type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Unsafe mark',marks:[{type:'link',attrs:{href:'javascript:alert(1)'}}]}]}]},
+    {type:'doc',content:[{type:'paragraph',attrs:{style:'color:red'},content:[{type:'text',text:'Attributes'}]}]},
+    {type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'x'.repeat(1201)}]}]},
+  ]) assert.equal((await request('/activities','POST',{title:'Invalid content',description_content},alice)).status,400);
+  const literal = await activity(alice,{description:'<img src=x onerror=alert(1)>',illustration:'shell'});
+  assert.equal(literal.description,'<img src=x onerror=alert(1)>'); assert.equal(literal.description_content,null);
+});
+
+test('all five themes persist for every visitor; only organisers change them and stale settings cannot overwrite', async () => {
+  const before = await schedule();
+  assert.equal((await request('/settings','PUT',{...before.wedding,theme:'night'},alice)).status,403);
+  assert.equal((await request('/settings','PUT',{...before.wedding,theme:'not-a-theme'},admin)).status,400);
+  for (const theme of ['beach','night','garden','sunset','lavender']) {
+    const current = await schedule();
+    const saved = await request('/settings','PUT',{...current.wedding,start_time:current.wedding.start_time.slice(0,5),theme},admin);
+    assert.equal(saved.status,200); assert.equal((await request('/timeline','GET',undefined,bob)).data.wedding.theme,theme);
+  }
+  assert.equal((await request('/settings','PUT',{...before.wedding,start_time:before.wedding.start_time.slice(0,5),theme:'beach'},admin)).status,409);
+  const current = await schedule();
+  assert.equal(current.wedding.schedule_revision,before.wedding.schedule_revision); assert.deepEqual(current.activities,before.activities);
+  const {theme,...legacy} = current.wedding;
+  assert.equal((await request('/settings','PUT',{...legacy,start_time:legacy.start_time.slice(0,5)},admin)).data.theme,theme);
+});

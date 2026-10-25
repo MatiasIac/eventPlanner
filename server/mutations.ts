@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Client } from './db';
 import type { Participant } from '../shared/model';
-import { jobSchema, nominationSchema, revisionSchema, settingsSchema } from '../shared/validation';
+import { jobSchema, nominationSchema, nominationsSchema, revisionSchema, settingsSchema } from '../shared/validation';
 import { ApiError } from './errors';
 import { owner, organiser } from './auth';
 import { mutateActivity } from './activities';
@@ -46,7 +46,7 @@ export async function mutate(c: Client, p: Participant, method: string, path: st
       await scheduleVersion(c, data.schedule_revision, true);
       await changeWeddingStart(c, row.start_time, start);
     }
-    return (await c.query('UPDATE wedding SET title=$1,date=$2,venue=$3,start_time=$4,revision=revision+1,updated_at=now() WHERE id=1 RETURNING *', [data.title, data.date, data.venue,start])).rows[0];
+    return (await c.query('UPDATE wedding SET title=$1,date=$2,venue=$3,start_time=$4,theme=$5,revision=revision+1,updated_at=now() WHERE id=1 RETURNING *', [data.title, data.date, data.venue,start,data.theme ?? row.theme])).rows[0];
   }
   if (parts[0] === 'activities') {
     if (parts[1] && parts[2] === 'jobs') {
@@ -64,6 +64,17 @@ export async function mutate(c: Client, p: Participant, method: string, path: st
     const { job: j, activity: a } = await jobAndParent(c, parts[1], true);
     if (parts.length === 3 && ['volunteer', 'nominate'].includes(parts[2]) && method === 'POST') {
       active(a); active(j);
+      if (parts[2] === 'nominate' && body && typeof body === 'object' && 'nominee_names' in body) {
+        const { nominee_names } = nominationsSchema.parse(body);
+        const current = (await c.query('SELECT * FROM assignments WHERE job_id=$1 AND active', [j.id])).rows;
+        const available = Math.max(0, j.capacity - current.length);
+        if (nominee_names.length > available) throw new ApiError(409, `Only ${available} ${available === 1 ? 'place is' : 'places are'} available. No names were saved. Review the names and try again.`, { ...j, assignments: current });
+        // The outer transaction holds the planner lock. Any failure rolls back
+        // the entire group; request idempotency also covers the entire group.
+        const saved = [];
+        for (const name of nominee_names) saved.push(await assignment(c, j, p, name));
+        return { assignments: saved };
+      }
       const name = parts[2] === 'nominate' ? nominationSchema.parse(body).nominee_name : null;
       return assignment(c, j, p, name);
     }

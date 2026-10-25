@@ -35,9 +35,9 @@ export async function mutateActivity(c: Client, p: Participant, method: string, 
     await scheduleVersion(c, data.schedule_revision, where.mode === 'relative');
     if (data.confirm) organiser(p);
     if ((await c.query('SELECT count(*)::int AS count FROM activities')).rows[0].count >= 500) throw new ApiError(409, 'The activity limit has been reached. Please contact the organiser.');
-    const a = (await c.query(`INSERT INTO activities(id,title,description,location_note,illustration,creator_id,duration_minutes,status,confirmed_by,confirmed_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [randomUUID(),data.title,data.description,data.location_note,data.illustration,p.id,duration(data),data.confirm ? 'confirmed' : 'draft',data.confirm ? p.id : null,data.confirm ? new Date() : null])).rows[0] as Activity;
+    const a = (await c.query(`INSERT INTO activities(id,title,description,location_note,illustration,creator_id,duration_minutes,status,confirmed_by,confirmed_at,description_content)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [randomUUID(),data.title,data.description,data.location_note,data.illustration,p.id,duration(data),data.confirm ? 'confirmed' : 'draft',data.confirm ? p.id : null,data.confirm ? new Date() : null,data.description_content ?? null])).rows[0] as Activity;
     await reschedule(c, { ...a, timing_mode: data.timing_mode ?? (where.mode === 'absolute' ? 'fixed' : 'linked') }, where, 'insert', a.id);
     if (data.take_care) {
       if ((await c.query('SELECT count(*)::int AS count FROM jobs')).rows[0].count >= 2500 || (await c.query('SELECT count(*)::int AS count FROM assignments')).rows[0].count >= 10000) throw new ApiError(409, 'The planning limit has been reached.');
@@ -77,8 +77,9 @@ export async function mutateActivity(c: Client, p: Participant, method: string, 
     if (p.role !== 'organiser' && (where.mode !== 'keep' || timingMode !== a.timing_mode || (a.status === 'confirmed' && changesTiming))) throw new ApiError(403, 'Only organisers can move activities or change the timing of a confirmed activity.');
     if (data.confirm) organiser(p);
     if (changesTiming) await scheduleVersion(c, data.schedule_revision, true);
-    await c.query(`UPDATE activities SET title=$1,description=$2,location_note=$3,illustration=$4,
-      revision=revision+1,updated_at=now() WHERE id=$5`, [data.title,data.description,data.location_note,data.illustration,a.id]);
+    const content = data.description_content === undefined ? (data.description === a.description ? a.description_content ?? null : null) : data.description_content;
+    await c.query(`UPDATE activities SET title=$1,description=$2,location_note=$3,illustration=$4,description_content=$6,
+      revision=revision+1,updated_at=now() WHERE id=$5`, [data.title,data.description,data.location_note,data.illustration,a.id,content]);
     if (changesTiming) await reschedule(c, { ...a, duration_minutes: length, duration_estimated: false, timing_mode: timingMode }, where, 'edit');
     if (data.duration_minutes !== undefined && !changesTiming && a.duration_estimated) await c.query('UPDATE activities SET duration_estimated=false WHERE id=$1', [a.id]);
     if (data.confirm && a.status !== 'confirmed') await c.query("UPDATE activities SET status='confirmed',confirmed_by=$1,confirmed_at=now() WHERE id=$2", [p.id,a.id]);
